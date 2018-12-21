@@ -1,0 +1,441 @@
+package popbl3;
+
+import java.awt.BorderLayout;
+import java.awt.Component;
+import java.awt.Dimension;
+import java.awt.GraphicsConfiguration;
+import java.awt.GridLayout;
+import java.awt.event.ActionEvent;
+import java.awt.event.KeyEvent;
+import java.util.Observable;
+import java.util.Observer;
+
+import javax.media.j3d.Canvas3D;
+import javax.swing.AbstractAction;
+import javax.swing.Action;
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.Icon;
+import javax.swing.ImageIcon;
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JList;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JToolBar;
+import javax.swing.ListSelectionModel;
+import javax.swing.SwingConstants;
+import javax.swing.event.ListSelectionEvent;
+import javax.swing.event.ListSelectionListener;
+
+import com.leapmotion.leap.Controller;
+import com.sun.j3d.utils.universe.SimpleUniverse;
+
+import popbl3.GestorMano.RESULTADO;
+
+public class PacienteFrame extends JFrame implements ListSelectionListener, Observer {
+
+	private Paciente paciente;
+
+	private MiAction accVerResultados;
+	private MiAction accHacerEjercicio;
+	private MiAction accPararEjercicio;
+	private MiAction accLogOut;
+
+	private JLabel textoDescripcion;
+	private JLabel textoResultadoInSitu;
+	private JLabel pantallaImagen;
+	private JPanel panatallaLeap;
+	private Canvas3D visualizador;
+	private GestorMano gestor;
+	private Mano3D mano3d;
+
+	private ModeloListaEjercicios modelo;
+	private EjercicioRenderer cellRenderer;
+	private JList<Ejercicio> listaEjercicios;
+
+	private RESULTADO ultimoResultado = RESULTADO.MAL;
+	private final int EJERCICIO_MANO_CERRADA = 1;
+	private LeapMotionListener leapListener;
+
+	private Controller controlador;
+
+	private String textoResultadoOut;
+
+	public boolean iniciarEjercicio = false;
+
+	private JButton botonHacerEjercicio;
+
+	private Communicator com;
+
+	public PacienteFrame(Paciente paciente) {
+		super(paciente.getNombre() + " " + paciente.getApellido1() + " " + paciente.getApellido2() + " (Paciente)");
+		this.paciente = paciente;
+		this.crearAcciones();
+		this.setSize(800, 600);
+		this.setMinimumSize(new Dimension(800, 600));
+		this.setLocation(50, 25);
+		this.setJMenuBar(crearBarraMenu());
+		this.getContentPane().add(crearToolBar(), BorderLayout.NORTH);
+		this.getContentPane().add(crearPanelVentana(), BorderLayout.CENTER);
+		this.setDefaultCloseOperation(EXIT_ON_CLOSE);
+		this.setVisible(true);
+		listaEjercicios.setSelectedIndex(0);
+		
+		gestor = new GestorMano();
+		gestor.addObserver(this);
+
+		leapListener = new LeapMotionListener(gestor);
+		controlador = new Controller();
+
+		controlador.addListener(leapListener);
+
+		com = new Communicator(this);
+		com.buscarPuertos();
+
+		com.connect("COM3");
+		com.initIOStream();
+		com.initListener();
+		
+
+	}
+
+	private void crearAcciones() {
+		accVerResultados = new MiAction("Ver resultados", new ImageIcon("iconos/verResultados.png"),
+				"Ver resultados del ejercicio", KeyEvent.VK_V);
+		accHacerEjercicio = new MiAction("Hacer ejercicio", new ImageIcon("iconos/hacerEjercicio.png"),
+				"Realizar ejercicio selecionado", KeyEvent.VK_H);
+		accPararEjercicio = new MiAction("Parar ejercicio", new ImageIcon("iconos/pararEjercicio.png"),
+				"Parar ejercicio en marcha", KeyEvent.VK_P);
+		accLogOut = new MiAction("Log out", new ImageIcon("iconos/logOut.png"), "Cerrar la sesión actual",
+				KeyEvent.VK_O);
+	}
+
+	private JMenuBar crearBarraMenu() {
+		JMenuBar barra = new JMenuBar();
+		JMenu editar = new JMenu("Editar");
+		JMenu salir = new JMenu("Salir");
+
+		editar.add(accVerResultados);
+		editar.addSeparator();
+		editar.add(accHacerEjercicio);
+
+		barra.add(editar);
+		barra.add(Box.createHorizontalGlue());
+
+		salir.add(accLogOut);
+		barra.add(salir);
+
+		return barra;
+	}
+
+	private Component crearToolBar() {
+		JToolBar toolBar = new JToolBar();
+		JButton boton;
+
+		toolBar.setFloatable(false);
+
+		toolBar.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+
+		boton = (JButton) toolBar.add(new JButton(accVerResultados));
+		toolBar.addSeparator(new Dimension(20, 0));
+		botonHacerEjercicio = (JButton) toolBar.add(new JButton(accHacerEjercicio));
+
+		toolBar.add(Box.createHorizontalGlue());
+
+		boton = (JButton) toolBar.add(new JButton(accLogOut));
+
+		return toolBar;
+	}
+
+	private Component crearPanelVentana() {
+		JPanel panel = new JPanel(new BorderLayout(10, 10));
+
+		panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+		panel.add(crearPanelListaEjercicios(), BorderLayout.WEST);
+		panel.add(crearPanelEjercicio(), BorderLayout.CENTER);
+
+		return panel;
+	}
+
+	private Component crearPanelListaEjercicios() {
+		JScrollPane panelScroll = new JScrollPane(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+				JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+		panelScroll.setPreferredSize(new Dimension(200, 0));
+
+		cellRenderer = new EjercicioRenderer();
+		modelo = new ModeloListaEjercicios(paciente);
+		listaEjercicios = new JList<>();
+
+		listaEjercicios.setModel(modelo);
+		listaEjercicios.setCellRenderer(cellRenderer);
+
+		listaEjercicios.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+		
+		listaEjercicios.addListSelectionListener(this);
+
+		panelScroll.setViewportView(listaEjercicios);
+
+		return panelScroll;
+	}
+
+	private Component crearPanelEjercicio() {
+		JPanel panel = new JPanel(new BorderLayout(20, 20));
+		panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+		panel.add(crearPanelDescripcion(), BorderLayout.NORTH);
+		panel.add(crearPanelCentro(), BorderLayout.CENTER);
+		panel.add(crearPanelResultadoInSitu(), BorderLayout.SOUTH);
+
+		return panel;
+	}
+
+	private Component crearPanelDescripcion() {
+		JPanel panel = new JPanel(new GridLayout(1, 1));
+		panel.setPreferredSize(new Dimension(0, 50));
+		panel.setBorder(BorderFactory.createLoweredBevelBorder());
+		textoDescripcion = new JLabel(" ");
+		textoDescripcion.setHorizontalAlignment(SwingConstants.CENTER);
+		textoDescripcion.setVerticalAlignment(SwingConstants.CENTER);
+
+		panel.add(textoDescripcion);
+
+		return panel;
+	}
+
+	private Component crearPanelCentro() {
+		JPanel panel = new JPanel(new GridLayout(1, 2, 5, 5));
+
+		panel.add(crearPanelImagen());
+		panel.add(crearPanelWebcam());
+
+		return panel;
+	}
+
+	private Component crearPanelImagen() {
+		JPanel panel = new JPanel(new GridLayout(1, 1));
+		panel.setBorder(BorderFactory.createLoweredBevelBorder());
+
+		pantallaImagen = new JLabel();
+		pantallaImagen.setHorizontalAlignment(JLabel.CENTER);
+		pantallaImagen.setVerticalAlignment(JLabel.CENTER);
+
+		panel.add(pantallaImagen);
+
+		return panel;
+	}
+
+	private Component crearPanelWebcam() {
+		panatallaLeap = new JPanel(new BorderLayout());
+		panatallaLeap.setBorder(BorderFactory.createLoweredBevelBorder());
+
+		GraphicsConfiguration gc = SimpleUniverse.getPreferredConfiguration();
+		visualizador = new Canvas3D(gc);
+
+		panatallaLeap.add(visualizador, BorderLayout.CENTER);
+
+		return panatallaLeap;
+	}
+
+	private Component crearPanelResultadoInSitu() {
+		JPanel panel = new JPanel(new GridLayout(1, 1));
+		panel.setPreferredSize(new Dimension(0, 50));
+		panel.setBorder(BorderFactory.createLoweredBevelBorder());
+
+		textoResultadoInSitu = new JLabel(" ");
+		textoResultadoInSitu.setHorizontalAlignment(SwingConstants.CENTER);
+		textoResultadoInSitu.setVerticalAlignment(SwingConstants.CENTER);
+
+		panel.add(textoResultadoInSitu);
+
+		return panel;
+	}
+
+	private class MiAction extends AbstractAction {
+		String texto;
+
+		public MiAction(String texto, Icon imagen, String descrip, Integer nemonic) {
+			super(texto, imagen);
+			this.texto = texto;
+			this.putValue(Action.SHORT_DESCRIPTION, descrip);
+			this.putValue(Action.MNEMONIC_KEY, nemonic);
+		}
+
+		@Override
+		public void actionPerformed(ActionEvent e) {
+			switch (texto) {
+			case "Ver resultados":
+				JOptionPane.showMessageDialog(PacienteFrame.this,
+						"Deberia salir el dialogo de ver la tabla de resultados", "Ver resultados",
+						JOptionPane.WARNING_MESSAGE);
+				break;
+				
+			case "Hacer ejercicio":
+				PacienteFrame.this.iniciarEjercicio = true;
+				listaEjercicios.setEnabled(false);
+				PacienteFrame.this.botonHacerEjercicio.setAction(accPararEjercicio);;
+				break;
+				
+			case "Parar ejercicio":
+				PacienteFrame.this.iniciarEjercicio = false;
+				listaEjercicios.setEnabled(true);
+				PacienteFrame.this.botonHacerEjercicio.setAction(accHacerEjercicio);;
+				PacienteFrame.this.terminarEjercicio();
+				break;
+				
+			case "Log out":
+				MainFrame frame = new MainFrame();
+				PacienteFrame.this.iniciarEjercicio = false;
+				com.disconnect();
+				PacienteFrame.this.dispose();
+				break;
+				
+			
+			default:
+				JOptionPane.showMessageDialog(PacienteFrame.this, "Error en el switch case", "Error",
+						JOptionPane.ERROR_MESSAGE);
+				break;
+
+			}
+		}
+	}
+
+	@Override
+	public void valueChanged(ListSelectionEvent e) {
+
+		if (!e.getValueIsAdjusting()) {
+			textoDescripcion.setText(listaEjercicios.getSelectedValue().getDescripcion());
+
+			textoResultadoInSitu.setText("Mano no encontrada");
+
+			ImageIcon icono = new ImageIcon(listaEjercicios.getSelectedValue().getDirectorioGIF());
+			pantallaImagen.setIcon(icono); // Las imagenes son GIF de 450x450
+
+		}
+
+	}
+
+	public void terminarEjercicio() {
+	//	int repeticiones = listaEjercicios.getSelectedValue().getRepeticiones();
+		
+	}
+
+	@Override
+	public void update(Observable arg0, Object arg1) {
+		RESULTADO resultado;
+
+		if (iniciarEjercicio && gestor.getHand() != null && gestor.getHand().isValid()) {
+			if (mano3d == null) {
+				mano3d = new Mano3D(visualizador, gestor.getHand());
+			} else {
+				mano3d.setHand(gestor.getHand());
+			}
+
+			switch (Integer.valueOf(listaEjercicios.getSelectedValue().getId())) {
+			case EJERCICIO_MANO_CERRADA:
+				resultado = gestor.isCerrada();
+				if (ultimoResultado != RESULTADO.BIEN && resultado == RESULTADO.BIEN) {
+					textoResultadoOut = "Cerrada ";
+					System.out.println(textoResultadoOut);
+					escribirResultado(resultado, listaEjercicios.getSelectedValue());
+				} else if (ultimoResultado == RESULTADO.CASI && resultado == RESULTADO.MAL) {
+					textoResultadoOut = "CASI!!! ";
+					System.out.println(textoResultadoOut);
+					escribirResultado(ultimoResultado, listaEjercicios.getSelectedValue());
+				} else if (ultimoResultado == RESULTADO.MAL && resultado == RESULTADO.MAL) {
+					if (textoResultadoOut != "CASI!!! ")
+						textoResultadoOut = "Abierta ";
+				}
+				ultimoResultado = resultado;
+
+				textoResultadoInSitu.setText(textoResultadoOut);
+				break;
+
+			default:
+				break;
+			}
+
+		}
+
+	}
+
+	static public boolean escribirResultado(RESULTADO resultado, Ejercicio ejercicio) {
+		boolean correcto = true;
+		try {
+			String strResult = ejercicio.getResultado();
+			String[] splitResult = new String[3];
+			String[] splitValor = new String[2];
+			int bien;
+			int casi;
+			int mal;
+			if (strResult.isEmpty()) {
+				strResult = "BIEN=0@CASI=0@MAL=0";
+			}
+			splitResult = strResult.split("[@]");
+			splitValor = splitResult[0].split("[=]");
+			bien = Integer.valueOf(splitValor[1]);
+			splitValor = splitResult[1].split("[=]");
+			casi = Integer.valueOf(splitValor[1]);
+			splitValor = splitResult[2].split("[=]");
+			mal = Integer.valueOf(splitValor[1]);
+			switch (resultado) {
+			case BIEN:
+				bien++;
+				break;
+			case CASI:
+				casi++;
+				break;
+			case MAL:
+				mal++;
+				break;
+			default:
+				break;
+			}
+			strResult = "BIEN=" + bien + "@CASI=" + casi + "@MAL=" + mal;
+			ejercicio.setResultado(strResult);
+		} catch (NumberFormatException e) {
+			e.printStackTrace();
+			System.out.println("Te lo dije");
+			correcto = false;
+		}
+		return correcto;
+
+	}
+
+	public void hacerEjercicio() {
+		botonHacerEjercicio.doClick();		
+	}
+
+	public void listaUp() {		
+		if(listaEjercicios.isEnabled()){
+			try {
+				listaEjercicios.setSelectedIndex(listaEjercicios.getSelectedIndex()-1);
+			} catch (IndexOutOfBoundsException e) {
+				System.out.println("La opcion elegida no es la correcta");
+			}
+		}
+	}
+
+	public void listaDown() {
+		if(listaEjercicios.isEnabled()){
+			try {
+				listaEjercicios.setSelectedIndex(listaEjercicios.getSelectedIndex()+1);
+			} catch (IndexOutOfBoundsException e) {
+				System.out.println("La opcion elegida no es la correcta");
+			}
+		}
+	}
+	
+	public static void main(String[] args) {
+
+		PacienteFrame frame = new PacienteFrame((Paciente) GestorFicheros.cargarUsuario("user1"));
+
+	}
+
+}
+

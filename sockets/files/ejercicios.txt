@@ -1,0 +1,5 @@
+1$Cerrar la mano$Hay que doblar los dedos hasta conseguir un puño cerrado. Después, hay que abrir la mano$/imagenes/manoCerrada.gif
+2$Juntar índice - pulgar$Hay que juntar los dedos índice y pulgar hasta que sus yemas se junten. Después volver a la posición inicial$/imagenes/dedoIndice.gif
+3$Juntar corazón - pulgar$Hay que juntar los dedos corazón y pulgar hasta que sus yemas se junten. Después volver a la posición inicial$/imagenes/dedoMedio.gif
+4$Juntar anular - pulgar$Hay que juntar los dedos anular y pulgar hasta que sus yemas se junten. Después volver a la posición inicial$/imagenes/dedoAnular.gif
+5$Juntar meñique - pulgar$Hay que juntar los dedos meñique y pulgar hasta que sus yemas se junten. Después volver a la posición inicial$/imagenes/dedoMenique.gif
