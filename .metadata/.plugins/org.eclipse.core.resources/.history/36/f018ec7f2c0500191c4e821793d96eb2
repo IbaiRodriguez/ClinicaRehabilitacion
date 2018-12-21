@@ -342,7 +342,6 @@ public class PacienteFrame extends JFrame implements ListSelectionListener, Obse
 			textoResultadoInSitu.setText("Mano no encontrada");
 
 			ImageIcon icono = new ImageIcon(this.getClass().getResource(listaEjercicios.getSelectedValue().getDirectorioGIF()));
-			
 			pantallaImagen.setIcon(icono); // Las imagenes son GIF de 450x450
 
 		}
